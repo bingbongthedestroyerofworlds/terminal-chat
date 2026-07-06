@@ -36,25 +36,14 @@ const AVATARS = {
     '4': encrypt(`  /\\  \n /  \\ \n/____\\`)
 };
 
-// --- RANDOMIZED NATURAL BLINKING ANIMATION LOOP ---
 function runBlinkCycle() {
-    // Normal state eyes
     hudBuddy.textContent = " <(o_o)> ";
-    
-    // Calculate a completely randomized delay timer for the next blink frame (between 1.5 to 5 seconds)
     let nextWaitTime = Math.random() * (5000 - 1500) + 1500;
-    
     setTimeout(() => {
-        // Closed/blinking eyes frame
         hudBuddy.textContent = " <(-_-)> ";
-        
-        // Hold the blink shut for a natural fraction of a second (150ms)
-        setTimeout(() => {
-            runBlinkCycle();
-        }, 150);
+        setTimeout(() => { runBlinkCycle(); }, 150);
     }, nextWaitTime);
 }
-// Start the natural blinking cycle
 runBlinkCycle();
 
 function encrypt(text) { return btoa(unescape(encodeURIComponent(text))); }
@@ -69,6 +58,30 @@ function updateSystemClock() {
 }
 setInterval(updateSystemClock, 1000);
 updateSystemClock();
+
+// Check if a saved session exists inside localStorage immediately when page boots
+function checkSavedSession() {
+    const savedUser = localStorage.getItem('terminal_user');
+    const savedPass = localStorage.getItem('terminal_pass');
+    const savedAvatar = localStorage.getItem('terminal_avatar');
+    const savedTheme = localStorage.getItem('terminal_theme');
+
+    // Reapply theme preferences if they exist
+    if (savedTheme === 'light') {
+        document.body.classList.add('light-theme');
+    }
+
+    if (savedUser && savedPass && savedAvatar) {
+        myUsername = savedUser;
+        myPassword = savedPass;
+        myAvatar = savedAvatar;
+        printMessage('', '', `SYSTEM: Restoring persistent gateway session for profile "${myUsername}"...`, true);
+        // Automatically attempt server re-handshake verification
+        socket.emit('auth-user', { name: myUsername, pass: myPassword });
+    } else {
+        displayPrompt.textContent = 'Enter Username: ';
+    }
+}
 
 function playBeepNotification() {
     if (audioMuted) return;
@@ -250,7 +263,6 @@ function exitRoom() {
 }
 
 leaveTrigger.addEventListener('click', exitRoom);
-displayPrompt.textContent = 'Enter Username: ';
 
 inputBox.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') {
@@ -265,6 +277,12 @@ inputBox.addEventListener('keydown', (e) => {
         else if (step === 'avatar') {
             if (AVATARS[val]) {
                 myAvatar = AVATARS[val];
+                
+                // Securely save credentials locally so page refreshes don't drop out
+                localStorage.setItem('terminal_user', myUsername);
+                localStorage.setItem('terminal_pass', myPassword);
+                localStorage.setItem('terminal_avatar', myAvatar);
+
                 if (isAdmin) { renderAdminPanel(); } 
                 else { step = 'room'; displayPrompt.textContent = 'Enter Room Name: '; hudLocation.textContent = "LOCATION: ROOM MATRIX SELECTION"; socket.emit('get-rooms-list'); }
             } else { printMessage('', '', 'SYSTEM: Invalid option.', true); }
@@ -289,14 +307,15 @@ inputBox.addEventListener('keydown', (e) => {
             if (val === '/vjoin') { initVoiceChannel(); return; }
             if (val === '/vleave') { handleLeaveVoice(); return; }
             
-            // --- LIGHT AND DARK THEME SWITCH COMMANDS ---
             if (val === '/light') {
                 document.body.classList.add('light-theme');
+                localStorage.setItem('terminal_theme', 'light');
                 printMessage('', '', 'SYSTEM: Swapped to Light Console Matrix layout.', true);
                 return;
             }
             if (val === '/dark') {
                 document.body.classList.remove('light-theme');
+                localStorage.setItem('terminal_theme', 'dark');
                 printMessage('', '', 'SYSTEM: Swapped to Dark Console Matrix layout.', true);
                 return;
             }
@@ -346,7 +365,10 @@ socket.on('room-join-result', (data) => {
         printMessage('', '', `SYSTEM: Safe handshake absolute. Entered room [${myRoom}].\nType "/vjoin" to test voice calling, or "/help" for details.`, true);
     } else {
         printMessage('', '', `SYSTEM ERROR: ${data.msg}`, true);
-        if (!isAdmin) socket.emit('get-rooms-list');
+        // Clean out invalid credentials if handshake fails
+        localStorage.clear();
+        step = 'username';
+        displayPrompt.textContent = 'Enter Username: ';
     }
 });
 
@@ -375,20 +397,33 @@ socket.on('admin-action-complete', (msg) => {
 
 socket.on('auth-result', (data) => {
     if (data.success) {
-        isAdmin = data.isAdmin; step = 'avatar';
-        printMessage('', '', `Select Avatar Profile Grid Portrait:\n1: Kitty Art\n2: Robot Art\n3: Punk Art\n4: Geometric Sigil Art\nChoose number (1-4):`, true);
-        displayPrompt.textContent = 'Select Portrait #: ';
+        isAdmin = data.isAdmin;
+        
+        // If we are restoring an existing storage session, skip the avatar setup wizard selection directly
+        if (localStorage.getItem('terminal_avatar')) {
+            if (isAdmin) { renderAdminPanel(); } 
+            else { step = 'room'; displayPrompt.textContent = 'Enter Room Name: '; hudLocation.textContent = "LOCATION: ROOM MATRIX SELECTION"; socket.emit('get-rooms-list'); }
+        } else {
+            step = 'avatar';
+            printMessage('', '', `Select Avatar Profile Grid Portrait:\n1: Kitty Art\n2: Robot Art\n3: Punk Art\n4: Geometric Sigil Art\nChoose number (1-4):`, true);
+            displayPrompt.textContent = 'Select Portrait #: ';
+        }
     } else {
         printMessage('', '', 'SYSTEM: ' + data.msg, true);
+        localStorage.clear(); // Reset broken loops
         step = 'username'; displayPrompt.textContent = 'Enter Username: ';
     }
 });
 
 function triggerLogout() {
     handleLeaveVoice(); socket.emit('leave-room'); socket.disconnect();
+    
+    // COMPLETELY DELETE ALL REMAINING COOKIE / SESSION RE-ENTRY PERMISSIONS
+    localStorage.clear();
+    
     step = 'username'; myUsername = ''; myPassword = ''; myRoom = ''; myAvatar = ''; isAdmin = false; adminActionTarget = '';
     hudLocation.textContent = "LOCATION: UNINITIALIZED GATEWAY";
-    output.innerHTML = '*** SECURE MULTI-ROOM TERMINAL v12.0 ***<br>SYSTEM: Session terminated successfully. Handshake dropped.<br><br>';
+    output.innerHTML = '*** SECURE MULTI-ROOM TERMINAL v13.0 ***<br>SYSTEM: Session terminated successfully. Handshake dropped.<br><br>';
     uploadTrigger.style.display = 'none'; leaveTrigger.style.display = 'none';
     displayPrompt.textContent = 'Enter Username: '; socket.connect();
 }
@@ -431,3 +466,6 @@ socket.on('message', ({ user, pfp, msg }) => {
 });
 
 socket.on('system-message', (msg) => { printMessage('', '', msg, true); });
+
+// Execute structural session check initialization routines
+checkSavedSession();
