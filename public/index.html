@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Terminal Chat v12.0</title>
+    <style>
+        /* Global CSS Theme Variables */
+        :root {
+            --bg-color: #0d0d0d;
+            --panel-bg: #0a0a0a;
+            --text-color: #ffffff;
+            --border-color: #ffffff;
+            --dashed-border: #333333;
+            --system-color: #666666;
+            --portrait-bg: #151515;
+            --voice-bg: #111111;
+            --voice-user-bg: #1a1a1a;
+            --scrollbar-thumb: #333333;
+            --scrollbar-hover: #555555;
+        }
+
+        .light-theme {
+            --bg-color: #f0f0f0;
+            --panel-bg: #e0e0e0;
+            --text-color: #000000;
+            --border-color: #000000;
+            --dashed-border: #bbbbbb;
+            --system-color: #555555;
+            --portrait-bg: #dddddd;
+            --voice-bg: #e5e5e5;
+            --voice-user-bg: #d5d5d5;
+            --scrollbar-thumb: #999999;
+            --scrollbar-hover: #777777;
+        }
+
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: var(--bg-color); }
+        ::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: var(--scrollbar-hover); }
+
+        body { background-color: var(--bg-color); color: var(--text-color); font-family: 'Courier New', monospace; padding: 110px 20px 20px 20px; margin: 0; transition: background 0.3s, color 0.3s; }
+        #terminal { max-width: 900px; margin: 0 auto; position: relative; }
+        
+        /* Top Fixed HUD System Bar */
+        #hud-bar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            background-color: var(--panel-bg);
+            border-bottom: 1px dashed var(--dashed-border);
+            padding: 8px 20px;
+            box-sizing: border-box;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 14px;
+            z-index: 9999;
+            color: var(--text-color);
+            opacity: 0.85;
+        }
+        #hud-left { display: flex; align-items: center; gap: 15px; }
+        #hud-buddy { color: #00ff00; font-weight: bold; }
+        #hud-time { color: #00ff00; font-weight: bold; }
+
+        /* Discord-style Voice/Video Status Tray */
+        #voice-tray {
+            position: fixed;
+            top: 37px;
+            left: 0;
+            width: 100%;
+            background-color: var(--voice-bg);
+            border-bottom: 1px solid #00ff00;
+            padding: 10px 20px;
+            box-sizing: border-box;
+            display: none;
+            align-items: center;
+            justify-content: space-between;
+            font-size: 13px;
+            z-index: 9998;
+        }
+        .voice-user { display: inline-flex; align-items: center; margin-right: 15px; background: var(--voice-user-bg); padding: 2px 8px; border: 1px solid var(--dashed-border); }
+        .voice-dot { width: 8px; height: 8px; background-color: #00ff00; border-radius: 50%; display: inline-block; margin-right: 6px; }
+        .voice-dot.muted { background-color: #ff3333; }
+
+        #output { height: 500px; overflow-y: auto; border-bottom: 1px solid var(--border-color); padding-bottom: 10px; margin-bottom: 10px; }
+        .input-line { display: flex; align-items: center; }
+        .prompt { color: var(--text-color); margin-right: 10px; white-space: pre; }
+        input[type="text"] { background: none; border: none; color: var(--text-color); font-family: inherit; font-size: inherit; outline: none; flex-grow: 1; }
+        .upload-btn, .leave-btn { color: var(--text-color); cursor: pointer; font-weight: bold; margin-right: 10px; user-select: none; }
+        .upload-btn:hover { color: #888888; }
+        .leave-btn { color: #ff3333; }
+        .leave-btn:hover { color: var(--text-color); background: #441111; }
+        
+        .system { color: var(--system-color); font-style: italic; }
+        .msg-line { margin: 12px 0; display: flex; align-items: flex-start; }
+        
+        .portrait-container { font-size: 10px; line-height: 10px; background: var(--portrait-bg); border: 1px solid var(--dashed-border); padding: 4px; margin-right: 12px; white-space: pre; color: #00ccff; display: inline-block; }
+        .content-box { flex-grow: 1; }
+        .user-tag { color: #ff00ff; font-weight: bold; margin-right: 5px; }
+        .shared-img { max-width: 300px; max-height: 200px; display: block; margin-top: 5px; border: 1px dashed var(--border-color); }
+        
+        .yt-frame { width: 100%; max-width: 460px; height: 260px; display: block; margin: 8px 0; border: 1px solid var(--dashed-border); }
+
+        .menu-btn { color: #00ff00; cursor: pointer; text-decoration: underline; display: inline-block; margin: 2px 0; }
+        .menu-btn:hover { color: var(--text-color); background: #222; }
+        .danger-btn { color: #ff3333; cursor: pointer; text-decoration: underline; }
+        .danger-btn:hover { color: var(--text-color); background: #441111; }
+    </style>
+</head>
+<body>
+    <div id="hud-bar">
+        <div id="hud-left">
+            <span id="hud-location">LOCATION: UNINITIALIZED GATEWAY</span>
+            <span id="hud-buddy">o_o</span>
+        </div>
+        <span id="hud-time">00:00:00</span>
+    </div>
+
+    <div id="voice-tray">
+        <div>
+            <span style="color: #00ff00; font-weight: bold; margin-right: 10px;">VOICE CONNECTED:</span>
+            <span id="voice-users-list">Checking connection state...</span>
+        </div>
+        <div id="voice-controls-panel" style="color: #888;">Commands available: /vjoin, /vleave, /vmute</div>
+    </div>
+
+    <div id="terminal">
+        <div id="output">
+            <div>*** SECURE MULTI-ROOM TERMINAL v12.0 ***</div>
+            <div id="setup-prompt">Establish secure handshake...</div>
+        </div>
+        <div class="input-line">
+            <input type="file" id="file-picker" accept="image/*" style="display: none;">
+            <span id="leave-trigger" class="leave-btn" style="display: none;" title="Leave Room">[X]</span>
+            <span id="upload-trigger" class="upload-btn" style="display: none;">[+]</span>
+            
+            <span id="display-prompt" class="prompt">guest@node:~$</span>
+            <input type="text" id="input-box" autofocus autocomplete="off">
+        </div>
+    </div>
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>
